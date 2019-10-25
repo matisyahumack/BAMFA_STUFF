@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Basic Page Content Type feature.
+ */
+
+include_once 'bam_basic_page_content_type.features.inc';

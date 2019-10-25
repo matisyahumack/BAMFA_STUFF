@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Art Collection Import feature.
+ */
+
+include_once 'bam_art_collection_import.features.inc';

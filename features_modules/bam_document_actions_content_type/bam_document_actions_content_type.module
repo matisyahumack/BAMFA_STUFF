@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Document Actions Content Type feature.
+ */
+
+include_once 'bam_document_actions_content_type.features.inc';

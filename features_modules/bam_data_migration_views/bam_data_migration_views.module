@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Data Migration Views feature.
+ */
+
+include_once 'bam_data_migration_views.features.inc';

@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Art Object Content Type feature.
+ */
+
+include_once 'bam_art_object_content_type.features.inc';

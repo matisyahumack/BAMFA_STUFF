@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Content Type Filters feature.
+ */
+
+include_once 'bam_content_type_filters.features.inc';

@@ -1,0 +1,13 @@
+name = BAM Content Type Filters
+description = Entity reference view filters for use with the content types
+core = 7.x
+package = Content Types
+version = 7.x-1.0
+project = bam_content_type_filters
+dependencies[] = entityreference
+dependencies[] = views
+features[ctools][] = views:views_default:3.0
+features[features_api][] = api:2
+features[views_view][] = entity_reference_views
+features_exclude[dependencies][ctools] = ctools
+project path = sites/all/modules/features

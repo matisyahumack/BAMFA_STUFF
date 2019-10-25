@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Article Content Type feature.
+ */
+
+include_once 'bam_article_content_type.features.inc';

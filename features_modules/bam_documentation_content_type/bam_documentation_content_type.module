@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Documentation Content Type feature.
+ */
+
+include_once 'bam_documentation_content_type.features.inc';

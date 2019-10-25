@@ -1,0 +1,11 @@
+name = BAM Data Migration Views
+description = Views to help monitor the importation of legacy data. This should be disabled/removed in production.
+core = 7.x
+package = Views
+version = 7.x-1.4
+project = bam_data_migration_views
+dependencies[] = ctools
+dependencies[] = views
+features[ctools][] = views:views_default:3.0
+features[features_api][] = api:2
+features[views_view][] = test_data

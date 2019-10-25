@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the BAM Donor and Member Event View feature.
+ */
+
+include_once 'bam_donor_and_member_event_view.features.inc';
