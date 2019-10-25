@@ -1,0 +1,316 @@
+<?php
+
+/**
+ * @file
+ * Main helper module for BAM/PFA
+ *
+ */
+
+/**
+* Implements hook_form_alter().
+*/
+function bam_helper_form_alter(&$form, &$form_state, $form_id){
+  switch ($form['#id']) {
+  	case 'views-exposed-form-pp-explore-page':
+  	case 'views-exposed-form-pp-meet-page':
+    case 'views-exposed-form-advanced-search-page':
+  		/**
+    	 * This sets a hidden field that can be updated with JS.
+    	 * Once the form is submitted, the layout value will be remembered.
+    	 */
+			$form['layout'] = array(
+				'#type' 					=> 'hidden', 
+				'#default_value' 	=> 'grid',
+				'#attributes' 		=> array('id' => 'bam_layout'),
+			);
+
+      $form['#attached']['js'][] = drupal_get_path('module', 'bam_helper') . '/bamfilterpages.js';
+
+  		break;
+
+    case 'search-block-form':
+      // redefine our submit handler
+      $form['actions']['submit']['#submit'][] = 'bam_helper_search_block_redirect';
+      break;
+
+  }
+}
+
+/**
+ * Submit call-back function for 'search-block-form'.
+ */
+function bam_helper_search_block_redirect($form, &$form_state) {
+  $v = $form_state['values'];
+  $form_state['redirect'] = array('advanced-search',
+    array(
+      'query' => array(
+        'keyword' => $v['search_block_form'], 
+      )
+    )
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function bam_helper_menu() {
+
+  $items = array();
+
+  $items['advanced-search-query'] = array(
+    'title' => t('Advanced Search'),
+    'description' => '',
+    'page callback' => 'bam_helper_advanced_search_query',
+    'page arguments' => array(''),
+    'access arguments' => array('access content'),
+    'file' => 'bam_helper_advanced_search_query.inc',
+  );
+  return $items;
+}
+
+
+/**
+* Implements hook_views_pre_render().
+*/
+function bam_helper_views_pre_render (&$view) {
+  if ($view->name == 'calendar' && ($view->current_display == 'page_2' || $view->current_display == 'block_1')) {
+    drupal_add_js(drupal_get_path('module', 'bam_helper') . '/bamcaltabs.js');
+  }
+}
+
+/**
+* Implements hook_block_info().
+*/
+function bam_helper_block_info() {
+  $blocks['modify_search'] = array(
+    'info' => t('FacetAPI Modify Search'),
+  );
+  $blocks['art_objects'] = array(
+    'info' => t('Facet Search: Art Objects'),
+  );
+  $blocks['doc_objects'] = array(
+    'info' => t('Facet Search: Documentation'),
+  );
+  $blocks['event_objects'] = array(
+    'info' => t('Facet Search: Events'),
+  );
+  $blocks['people_objects'] = array(
+    'info' => t('Facet Search: People'),
+  );
+  return $blocks;
+}
+/**
+* Implements hook_block_view().
+*/
+function bam_helper_block_view($delta = '') {
+  /**
+   * FILM OBJECT: /advanced-search?f[0]=type%3Aart_object&f[1]=field_ao_itemclass_term%3A19997
+   * EVENTS: /advanced-search?f[0]=type%3Aevent
+   * PEOPLE: /advanced-search?f[0]=type%3Aperson
+   */
+  $block_output = '';
+
+  switch ($delta) {
+    case 'modify_search':
+
+    $block_countries = block_load('facetapi', 'zI0hplxoLycupFdAFTYV3xDReh0U7Eu1'); 
+    $block_countries_output = $block_countries ? drupal_render(_block_get_renderable_array(_block_render_blocks(array($block_countries)))) : '';
+
+    $block_dates = block_load('facetapi', '1JvmMyLDpAgByNMhKs8091z0VShgHz7R'); 
+    $block_dates_output = $block_dates ? drupal_render(_block_get_renderable_array(_block_render_blocks(array($block_dates)))) : '';
+
+    $block['subject'] = t('');
+    $block['content'] = $block_countries_output;
+    $block['content'] .= $block_dates_output;
+
+      break;
+
+    case 'art_objects':
+
+    $q = drupal_get_query_parameters();
+    $q_layout = isset($q['layout']) ? array('layout' => $q['layout']) : array();
+
+    $facet_block_ids = array(
+      'LJ40Te8IRkj9FOQOBDrAU2pVR9UM1uBe', // Item class
+      'WV4xDbCDWjnLeBQ9ifVioK2ajUuzBKdR', // Genre
+      'VVNyLpH0aKMvgG6GRODK9iI6tNospZZo', // Format
+      'nM1681hyq8RGijByADW90pYsi0SLduqk', // Color info
+      'pfFF8UlIEFqZ06Ki30hUa0N8wvz1LwOi', // Silent info
+      'dtHqdukenqUOLuk5IYHDIl07KJ0bTVpW', // Owner
+      'PXPgOITHSNajo34Qt70ElIPeSbSG4zco', // Status
+      'bV0ltL3pScgs0JaCZGmc2txt1mXZIYZ4', // Location
+    );
+
+    foreach ($facet_block_ids as $key => $value) {
+      $_block = block_load('facetapi', $value); 
+      $block_output .= $_block ? drupal_render(_block_get_renderable_array(_block_render_blocks(array($_block)))) : '';
+    }
+
+    $view = views_get_view('indexed_search_result_count_per_content_type');
+    $view->set_display('block');
+    $view->pre_execute();
+    $view->execute();
+    $return_value = $view->total_rows;
+
+    if (isset($q['f'][0])) {
+      $h2_class = $q['f'][0] == 'type:art_object' ? 'object-open' : 'object-closed';
+    } else {
+      $h2_class = 'object-closed';
+    }
+    
+    $block_title = '<h2 class="block-title ' . $h2_class . '">' . l(t('Art & Film Objects (!n)', array('!n' => $return_value)), 'advanced-search', array('query' => array(urldecode('f%5B0%5D') => 'type:art_object', $q_layout))) . '</h2>';
+
+    // Concatenate all blocks
+    $all_art_object_blocks = $block_title . $block_output;
+
+    $block['subject'] = '';
+    if (!isset($q['f'][0])) {
+      $block['content'] = $block_title;
+    } else {
+      $block['content'] = $q['f'][0] == 'type:art_object' ? $all_art_object_blocks : '';
+    }
+    
+
+      break;
+
+    case 'doc_objects':
+
+    $q = drupal_get_query_parameters();
+    $q_layout = isset($q['layout']) ? array('layout' => $q['layout']) : array();
+
+    $facet_block_ids = array(
+      'zDRus6TEAy9OUIREJ5oHBDzDEPPbqs0t', // Object Types
+      'Fj8oY1Kp51075O6aujUB0Mzv6WAWjRCo', // Illustrations
+      'dG0ENwYhtiuRHCJrF0LMk7w12e7wf6Xk', // Production costs
+      '8mA0hnebSAh9rivb9TjuUQ0xBJzcE1u0', // Tech credits
+      'M4Le7xQiGMqEMzSBUyXt1HIGyxEI8u9K', // Filmography
+      'aqsffGpwVO1aZhclbr0BOEQdZJPhr0CV', // Production co.
+      'evmOJLywvLP9ANt94nB0zarSeU1bP8yV', // Distribution co.
+      'T1q21EK4cDa7GWONIyCUfd1rS7ZRUyyp', // Box office revenue
+      'uX9jZiXTi7HqyJC0ITmOvuaHciV0Z90a', // Bibliography
+      '2qEblBo13iQovtyVNPcLdB91vuYTo7M4', // Cast credits
+    );
+
+    foreach ($facet_block_ids as $key => $value) {
+      $_block = block_load('facetapi', $value); 
+      $block_output .= $_block ? drupal_render(_block_get_renderable_array(_block_render_blocks(array($_block)))) : '';
+    }
+
+    $view = views_get_view('indexed_search_result_count_per_content_type');
+    $view->set_display('block_1');
+    $view->pre_execute();
+    $view->execute();
+    $return_value = $view->total_rows;
+
+    if (isset($q['f'][0])) {
+      $h2_class = $q['f'][0] == 'type:documentation' ? 'object-open' : 'object-closed';
+    } else {
+      $h2_class = 'object-closed';
+    }
+    
+    $block_title = '<h2 class="block-title ' . $h2_class . '">' . l(t('Documentation (!n)', array('!n' => $return_value)), 'advanced-search', array('query' => array(urldecode('f%5B0%5D') => 'type:documentation', $q_layout))) . '</h2>';
+
+    // Concatenate all blocks
+    $all_documentation_blocks = $block_title . $block_output;
+
+    $block['subject'] = '';
+    if (!isset($q['f'][0])) {
+      $block['content'] = $block_title;
+    } else {
+      $block['content'] = $q['f'][0] == 'type:documentation' ? $all_documentation_blocks : '';
+    }
+    
+
+      break;
+
+    case 'event_objects':
+
+    $q = drupal_get_query_parameters();
+    $q_layout = isset($q['layout']) ? array('layout' => $q['layout']) : array();
+
+    $facet_block_ids = array(
+      'QUBlge4oy31K8ax5RE0NbTG5axHNUfH2', // Type
+      'yyZCJxlOF6CwEa4072TEWKQ9Fl2vVdeN', // Film Events
+      'Ryqwi9GoyZogotELgZYX6ZNL154A0UmE', // Recommended Ages
+      'j1mGky1OvSTWZcpyOCf7ljeZX1rNUXKi', // Audiences
+    );
+
+    foreach ($facet_block_ids as $key => $value) {
+      $_block = block_load('facetapi', $value); 
+      $block_output .= $_block ? drupal_render(_block_get_renderable_array(_block_render_blocks(array($_block)))) : '';
+    }
+
+    $view = views_get_view('indexed_search_result_count_per_content_type');
+    $view->set_display('block_2');
+    $view->pre_execute();
+    $view->execute();
+    $return_value = $view->total_rows;
+
+    if (isset($q['f'][0])) {
+      $h2_class = $q['f'][0] == 'type:event' ? 'object-open' : 'object-closed';
+    } else {
+      $h2_class = 'object-closed';
+    }
+    
+    $block_title = '<h2 class="block-title ' . $h2_class . '">' . l(t('Events (!n)', array('!n' => $return_value)), 'advanced-search', array('query' => array(urldecode('f%5B0%5D') => 'type:event', $q_layout))) . '</h2>';
+
+    // Concatenate all blocks
+    $all_event_blocks = $block_title . $block_output;
+
+    $block['subject'] = '';
+    if (!isset($q['f'][0])) {
+      $block['content'] = $block_title;
+    } else {
+      $block['content'] = $q['f'][0] == 'type:event' ? $all_event_blocks : '';
+    }
+    
+
+      break;
+
+    case 'people_objects':
+
+    $q = drupal_get_query_parameters();
+    $q_layout = isset($q['layout']) ? array('layout' => $q['layout']) : array();
+
+    $facet_block_ids = array(
+      'AevbU6J9Ws8ghdNYcfLG8HX47bkWxXAc', // Staff
+      '0WHXpknjqCuZRCeDQboCAFmwrSYUjTCP', // Nationality
+    );
+
+    foreach ($facet_block_ids as $key => $value) {
+      $_block = block_load('facetapi', $value); 
+      $block_output .= $_block ? drupal_render(_block_get_renderable_array(_block_render_blocks(array($_block)))) : '';
+    }
+
+    $view = views_get_view('indexed_search_result_count_per_content_type');
+    $view->set_display('block_3');
+    $view->pre_execute();
+    $view->execute();
+    $return_value = $view->total_rows;
+
+    if (isset($q['f'][0])) {
+      $h2_class = $q['f'][0] == 'type:person' ? 'object-open' : 'object-closed';
+    } else {
+      $h2_class = 'object-closed';
+    }
+    
+    $block_title = '<h2 class="block-title ' . $h2_class . '">' . l(t('People (!n)', array('!n' => $return_value)), 'advanced-search', array('query' => array(urldecode('f%5B0%5D') => 'type:person', $q_layout))) . '</h2>';
+
+    // Concatenate all blocks
+    $all_person_blocks = $block_title . $block_output;
+
+    $block['subject'] = '';
+    if (!isset($q['f'][0])) {
+      $block['content'] = $block_title;
+    } else {
+      $block['content'] = $q['f'][0] == 'type:person' ? $all_person_blocks : '';
+    }
+    
+
+      break;
+  }
+
+  return $block;
+}
+
+

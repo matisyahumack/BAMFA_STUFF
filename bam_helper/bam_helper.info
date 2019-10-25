@@ -1,0 +1,5 @@
+name = BAM Helper
+description = A Helper module 
+core = 7.x
+package = BAM Helper
+version = 7.x-1.0
