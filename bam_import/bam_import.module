@@ -1,0 +1,429 @@
+<?php
+/**
+ * @file
+ * Code for the bam_import module.
+ */
+
+include_once 'bam_import.features.inc';
+require_once('sites/all/libraries/filemaker/FileMaker.php');
+
+function bam_import_node_delete($node) {
+  $result = db_query("SELECT id FROM {eck_bam_mapping} 
+  WHERE bundle = 'art_object'
+  AND entity_id = :nid", array(':nid' => $node->nid));
+  $entity_id =  $result->fetchColumn(0);
+    dpm($entity_id);
+  db_query("delete from {eck_bam_mapping} WHERE id = :id", array(':id' => $entity_id));
+}
+
+function bam_import_list_dbs() {
+  $fm = _bam_import_fm_connect();
+  $dbs = $fm->listDatabases();
+  return $dbs;
+}
+
+function bam_import_audio($start, $num, $db = 'Posters', $layout = 'Audio Tapes Table View') {
+  $fm = _bam_import_fm_connect($db);
+  print "Importing $num records, starting at $start\n";
+  $num_batches = ($num/4 + 1);
+  //$num_batches = 2044;
+  $batch_size = 4;
+  $path = drupal_get_path('module', 'bam_import') . '/audio_logfile.csv';
+  $log = fopen($path, 'a+');
+  $tid = 20442;
+  $num_done = 0;
+  for ($x = 0; $x < $num_batches; $x++){
+    $messages = array();
+    $query = $fm->newFindCommand($layout);
+    // this gets records where the ID is not empty
+    $query->AddFindCriterion('kp_TapeID',">''");
+    $start_range = ($x * $batch_size) + $start; // ugh
+    $query->setRange($start_range, $batch_size); 
+    $result = $query->execute();
+     print $result->getTableRecordCount() . " | " . $num_done . "\n";
+    if ($result->getFetchCount()< 1){
+      break;
+    }
+    foreach ($result->getRecords() as $res){
+      $messages = array();
+      
+       $orig_title = $res->getFieldUnencoded('Title',0);
+      if (strlen($orig_title) > 254) {
+        $title = truncate_utf8($orig_title, 254, TRUE);
+        $messages[] = array(
+          'title truncated',
+          $orig_title,
+        );
+      } else {
+        $title = $orig_title;
+      }
+      
+      $values = array(
+        'title' => $title,
+        'type' => 'Documentation',
+        'uid' => 1, // admin,
+        'status' => 1,
+        'comment' => 0,
+        'promote' => 0,
+      );
+
+      $values['field_original_posters_prim_key']['und'][0]['value'] = $res->_impl->_fields['kp_TapeID'][0];
+      $values['field_doc_id_number']['und'][0]['value'] = $res->_impl->_fields['Tape No'][0];
+      $values['field_doc_id_number_type']['und'][0]['tid'] =  20694; // 'Poster Database'
+     
+      //object type field was set to select list, i changed it to term reference
+      $values['field_doc_object_type']['und'][0]['tid'] = $tid;
+      
+      
+      $people_text = 'Speaker: ' . $res->getFieldUnencoded('Speaker', 0) . "\n";
+      $values['field_doc_people_text']['und'][0]['value'] = $people_text;
+      
+      //date("Y-m-d")
+      $fm_date = $res->_impl->_fields['Date'][0];
+      if($fm_date) {
+        $new_date = date(
+          'Y-m-d',
+          strtotime($res->_impl->_fields['Date'][0])
+        );
+        $values['field_doc_date']['und'][0]['value'] = $new_date;
+      }
+      $values['field_doc_accession_number']['und'][0]['value'] = $res->_impl->_fields['Accession Number'][0];
+      $values['field_doc_location']['und'][0]['value'] = $res->_impl->_fields['Location'][0];
+      
+      $values['field_doc_internal_notes']['und'][0]['value'] = $res->getFieldUnencoded('Notes', 0);
+                      
+      $node = entity_create('node', $values);
+      $node_wrapper = entity_metadata_wrapper('node', $node);
+            
+      $node_wrapper->save();
+      $num_done++;
+       //log all the messages we set in this process to a text file
+      if (count($messages > 0)){
+        foreach ($messages as $message) {
+          $fields = array_merge(array($original_primary_key, $node_wrapper->getIdentifier()), $message);
+          //print_r($fields);
+          fputcsv($log, $fields);
+        }
+      }
+    }
+  }
+}
+
+
+function bam_import_poster($start, $num, $db = 'Posters', $layout = 'posters') {
+  $fm = _bam_import_fm_connect($db);
+  print "Importing $num records, starting at $start\n";
+  print time(). "\n";
+  $num_batches = ($num/7 + 1);
+  $batch_size = 7;
+  $path = drupal_get_path('module', 'bam_import') . '/posters_logfile.csv';
+  $log = fopen($path, 'a+');
+  $posters_tid = 20438;
+  $num_done = 0;
+  for ($x = 0; $x < $num_batches; $x++){
+    $messages = array();
+    $query = $fm->newFindCommand($layout);
+    //print_r($query);
+    // this gets records where the ID is not empty
+    //$query->AddFindCriterion('kp_PostersID',">''");
+    $start_range = ($x * $batch_size) + $start; // ugh
+    print $start_range . " " . $batch_size;
+    $query->setRange($start_range, $batch_size); 
+    $result = $query->execute();
+     print $result->getTableRecordCount() . " | " . $num_done . "\n";
+    if ($result->getFetchCount()< 1){
+     break;
+    }
+    foreach ($result->getRecords() as $res){
+      $messages = array();
+      
+      $title = $res->getFieldUnencoded('English Lang Title', 0);
+      if (empty($title)) {
+        $title = $res->getFieldUnencoded('Foreign Title', 0);
+      }
+      $values = array(
+        'title' => $title,
+        'type' => 'documentation',
+        'uid' => 1, // admin,
+        'status' => 1,
+        'comment' => 0,
+        'promote' => 0,
+      );
+
+      $values['field_original_posters_prim_key']['und'][0]['value'] =
+        $res->_impl->_fields['kp_PostersID'][0];
+      $values['field_doc_id_number']['und'][0]['value'] = $res->_impl->_fields['I.D. #'][0];
+      $values['field_doc_id_number_type']['und'][0]['tid'] =  20694; // 'Poster Database'
+
+      //object type field was set to select list, i changed it to term reference
+      $values['field_doc_object_type']['und'][0]['tid'] = $posters_tid;
+      
+      // titles
+      $values['field_doc_sort_title']['und'][0]['value'] = $res->getFieldUnencoded('English Lang Title', 0);
+      if ($res->getFieldUnencoded('Foreign Title', 0)){
+        $values['field_doc_foreign_title']['und'][0]['value'] = $res->getFieldUnencoded('Foreign Title', 0);
+      }
+      $alt_titles = '';
+      if (($res->getFieldUnencoded('Alternate Title', 0) != '')){
+        $alt_titles .= 'ALT TITLE: ' . $res->getFieldUnencoded('Alternate Title', 0) . "\n";
+      }
+      if (($res->getFieldUnencoded('complete title', 0)!='') 
+        AND ($title != $res->getFieldUnencoded('complete title', 0))) {
+        $alt_titles .= 'COMPLETE TITLE: ' . $res->getFieldUnencoded('complete title', 0) . "\n";
+      }
+      $values['field_doc_alternate_titles']['und'][0]['value'] = $alt_titles;
+      
+      $people_text = 'Director: ' . $res->getFieldUnencoded('Director', 0) . "\n";
+      $values['field_doc_people_text']['und'][0]['value'] = $people_text;
+      //this threw a bunch of errors for empty fields
+      $num_copies = $res->_impl->_fields['No. of copies'][0];
+      if (!is_numeric($num_copies)){
+        $num_copies =  0;
+        $messages[] = array(
+          $orig_id,
+          $num_copies,
+          'bad num copies',
+        );
+      }
+      $values['field_doc_number_of_copies']['und'][0]['value'] = $num_copies;  
+      $values['field_doc_dimensions']['und'][0]['value'] = $res->_impl->_fields['Size'][0];
+      $values['field_doc_internal_notes']['und'][0]['value'] = $res->getFieldUnencoded('Notes', 0);
+      
+      //date("Y-m-d"), don't populate if not set in FM
+      $fm_year = $res->_impl->_fields['Year'][0];
+      if ($fm_year) {
+        $new_date = date(
+          'Y-m-d',
+          strtotime($fm_year  . '-07-01')
+        );
+        $values['field_doc_date']['und'][0]['value'] = $new_date;
+      }           
+      $node = entity_create('node', $values);
+      $node_wrapper = entity_metadata_wrapper('node', $node);
+            
+      // in drupal the field was named field_oo_country_of_prigin and was a select list
+      // I deleted it, and made a new field_oo_country_of_origin field references nations
+      $country = $res->getFieldUnencoded('Country', 0);
+      $tid = _bam_import_get_term_tid($country, "nations");
+      $node_wrapper->field_doc_country_of_origin->set($tid); 
+
+      $node_wrapper->save();
+      $num_done ++;
+       //log all the messages we set in this process to a text file
+      if (count($messages > 0)){
+        foreach ($messages as $message) {
+          $fields = array_merge(array($original_primary_key, $node_wrapper->getIdentifier()), $message);
+          //print_r($fields);
+          fputcsv($log, $fields);
+        }
+      }
+    }
+  }
+  print time(). "\n";
+}
+
+function bam_import_import_art_object($start, $num, $db = "BAMCollection", $layout = 'Collection Items Detail'){
+  $fm = _bam_import_fm_connect($db);
+  print time(). "\n";
+  print "Importing $num records starting at $start.\n";
+  $num_batches = ($num/10) + 1; 
+  $batch_size = 25; //how many records to grab, so Filemaker doesn't run us out of memory
+  
+  $path = drupal_get_path('module', 'bam_import');
+  $log = fopen($path . '/bamcollection_logfile.csv', 'a+');
+  
+  for ($x = 1; $x <= $num_batches; $x++) { // x is number of batches
+    //print "batch: " . $x . "\n";
+    $query = $fm->newFindCommand($layout);
+    $start_range = ($x * $batch_size) + $start; // ugh
+    $query->setRange($start_range, $batch_size); 
+    $result = $query->execute();
+    if (count($result)< 1){
+      break;
+    }
+    foreach($result->getRecords() as $res) {
+      $messages = array(); // for logging, is written at the end of each record
+      //print_r($res->_impl->_fields);
+      $original_primary_key = $res->_impl->_fields['__kp_CollectionItem_ID'][0];
+      if (empty($original_primary_key)) {
+        continue;
+      }
+      $orig_title = $res->getFieldUnencoded('Title',0);
+      if (strlen($orig_title) > 254) {
+        $title = truncate_utf8($orig_title, 254, TRUE);
+        $messages[] = array(
+          'title truncated',
+          $orig_title,
+        );
+      } else {
+        $title = $orig_title;
+      }
+      $values = array(
+        'title' => $title,
+        'type' => 'art_object',
+        'uid' => 1, // admin,
+        'status' => 1,
+        'comment' => 0,
+        'promote' => 0,
+      );
+      $node = entity_create('node', $values);
+      $node_wrapper = entity_metadata_wrapper('node', $node);
+      $node_wrapper->save();
+
+      $node_wrapper->field_original_primary_key->set($original_primary_key);
+      if ($title != $orig_title) {
+        $node_wrapper->field_ao_original_title->set($orig_title);
+      }
+      $summary = '';
+      $summary .= $res->getFieldUnencoded('subdescription', 0);
+      $summary .= "\n" . $res->getFieldUnencoded('subdescription', 1);
+      $summary .= "\n" . $res->getFieldUnencoded('subdescription', 2);
+      $summary .= "\n" . $res->getFieldUnencoded('subdescription', 3);
+      $summary .= "\n" . $res->getFieldUnencoded('subdescription', 4);
+      $node_wrapper->body->set(array(
+          'value' => $res->getFieldUnencoded('Description',0) . "\n" . $summary,
+        ));
+      
+      $node_wrapper->field_ao_credit_line->set($res->_impl->_fields['CreditLine'][0]);
+      $node_wrapper->field_accession_number->set($res->_impl->_fields['ID Number'][0]);
+      $node_wrapper->field_materials->set($res->_impl->_fields['Materials'][0]);
+
+      // date mappings
+      // if we just have a 4-character year, so turn it into a date
+      // following the example of other items already in the database
+      $earliest_date_year = ltrim(rtrim($res->_impl->_fields['EarliestDate'][0]));
+      
+      if (empty($earliest_date_year)
+        or ($earliest_date_year != '') 
+        or ($earliest_date_year != 'nd') 
+        or ($earliest_date_year != 'undated') 
+        or ($earliest_date_year != 'n.d.')){
+        // if date is just a year, add it, and log it otherwise
+        if(preg_match('/^[1-9]\d{3}$/', $earliest_date_year)) {
+          $earliest_date_value = "$earliest_date_year-04-01 17:40:33";
+          //$node_wrapper->field_earliest_date->value = $earliest_date_value;
+          $node->field_earliest_date['und'][0]['value'] = $earliest_date_value;
+        } else {
+          $messages[] = array(
+            'earliest date not numeric',
+            $earliest_date_year,
+            strtotime($earliest_date_year),
+          ); 
+        }
+      }
+      $latest_date_year = ltrim(rtrim($res->_impl->_fields['LatestDate'][0]));
+      if (empty($latest_date_year)
+        or ($latest_date_year != '') 
+        or ($latest_date_year != 'nd') 
+        or ($latest_date_year != 'undated') 
+        or ($latest_date_year != 'n.d.')){
+        if(preg_match('/^[1-9]\d{3}$/', $latest_date_year)) {
+          $latest_date_value = "$latest_date_year-04-01 17:40:33";
+          $node->field_latest_date['und'][0]['value'] = $latest_date_value;
+         } else {
+          $messages[] = array(
+            'latest date not numeric',
+            $latest_date_year,
+            strtotime($latest_date_year),
+          ); 
+        }
+      }
+
+      $itemclass = $res->_impl->_fields['ItemClass'][0];
+      $tid = _bam_import_get_term_tid($itemclass, "itemclass");
+      $node_wrapper->field_ao_itemclass_term->set( $tid); 
+
+      $periods = $res->_impl->_fields['PeriodOrStyle'];
+      foreach($periods as $i => $term_name){
+        if (!empty($term_name)) {
+          $tid = _bam_import_get_term_tid($term_name, "periods");
+          $node_wrapper->field_ao_period->tid[$i] = $tid;   
+        }
+      }
+      $node_wrapper->save();
+      
+      // saved, so let's keep a record of it in our mapping table
+      db_insert('eck_bam_mapping') // Table name no longer needs {}
+        ->fields(array(
+          'type' => 'node',
+          'created' => REQUEST_TIME,
+          'changed' => REQUEST_TIME,
+          'entity_type' => 'node',
+          'bundle' => 'art_object',
+          'entity_id' => $node_wrapper->getIdentifier(),
+          'source_id' => $original_primary_key,
+        ))->execute();
+      //log all the messages we set in this process to a text file
+      if (count($messages > 0)){
+        foreach ($messages as $message) {
+          $fields = array_merge(array($original_primary_key, $node_wrapper->getIdentifier()), $message);
+          //print_r($fields);
+          fputcsv($log, $fields);
+        }
+      }
+    }
+  }
+  print time(). "\n";
+}
+
+
+function bam_import_list_layouts($db = '') {
+   $fm = _bam_import_fm_connect($db);
+   $layouts = $fm->listLayouts();
+   return $layouts;
+}
+
+function bam_import_list_fields($db, $layout_name) {
+  $fm = _bam_import_fm_connect($db);
+  $field_list = array();
+  $unique_fields = array();
+  
+  $layout_info = $fm->getLayout($layout_name);
+  $fields = $layout_info->_impl->_fields;
+   
+  foreach($fields as $field_name => $info) {
+    $field_list[] = $field_name;
+  }
+  return $field_list;
+}
+
+function _bam_import_fm_connect($database = '', $fmpro="macbook"){
+  switch ($fmpro) {
+    case "macbook":
+      $host = "192.168.1.73";
+      break;
+    default:
+      $host = $fmrpo;
+      break;
+  }
+  $user = "admin";
+  $pass = "bampfa";
+  $fm = new FileMaker($database, $host, $user, $pass);
+
+  return $fm;
+}
+
+/**
+* checks to see if a term is in the vocabulary
+* if it is, returns the $tid
+* else adds it and returns the $tid
+**/
+function _bam_import_get_term_tid($term_name, $vocabulary_name) {
+  $vocabs = taxonomy_vocabulary_get_names();//cached by drupal
+  $vid = $vocabs[$vocabulary_name]->vid;
+  $terms = taxonomy_get_term_by_name($term_name, $vocabulary_name);
+  if (count($terms) < 1) {
+      $term  = (object) array(
+        'vid' => $vid,
+        'name' => $term_name,
+      );
+      taxonomy_term_save($term);
+      $tid = $term->tid;
+    } else {
+      $term = reset($terms);
+      $tid = $term->tid;
+    }
+  return $tid;
+}
+
+

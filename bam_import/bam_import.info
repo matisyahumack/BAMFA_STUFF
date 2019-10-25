@@ -1,0 +1,10 @@
+name = bam_import
+description = Tools for importing from the various BAMPFA Sources
+core = 7.x
+package = bam
+dependencies[] = ctools
+dependencies[] = eck
+dependencies[] = features
+features[eck_bundle][] = bam_mapping_keeps_track_of_
+features[eck_entity_type][] = bam_mapping
+features[features_api][] = api:2
